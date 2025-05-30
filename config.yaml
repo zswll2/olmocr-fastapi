@@ -1,0 +1,42 @@
+# olmOCR API配置文件
+
+# 应用设置
+app:
+  title: "olmOCR API"
+  description: "用于PDF和图像文档OCR处理的API接口"
+  version: "1.0.0"
+  debug: false
+
+# 服务器设置
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: false
+
+# 安全设置
+security:
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+
+# CORS设置
+cors:
+  allow_origins: ["*"]
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+
+# 工作目录设置
+workdir: "./olmocr_workdir"
+
+# OCR设置
+ocr:
+  supported_formats: [".pdf", ".png", ".jpg", ".jpeg"]
+  max_file_size_mb: 50
+
+# 用户设置 - 在生产环境中请修改
+users:
+  admin:
+    username: "admin"
+    # 默认密码: secret
+    hashed_password: "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
