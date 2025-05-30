@@ -7,3 +7,5 @@ olmocr[gpu]>=0.1.68
 pydantic>=2.0.0
 asyncio>=3.4.3
 pillow>=9.5.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
