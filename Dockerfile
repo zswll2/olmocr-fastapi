@@ -21,8 +21,15 @@ COPY . .
 # 创建工作目录
 RUN mkdir -p /app/olmocr_workdir
 
+# 复制配置文件（如果不存在则使用示例）
+RUN if [ ! -f "config.yaml" ]; then cp config.yaml.example config.yaml; fi \
+    && if [ ! -f ".env" ]; then cp .env.example .env; fi
+
 # 暴露端口
 EXPOSE 8000
 
+# 设置启动脚本为可执行
+RUN chmod +x start.sh
+
 # 启动应用
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./start.sh"]
