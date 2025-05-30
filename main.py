@@ -1,5 +1,6 @@
 import os
 import uuid
+import yaml
 import shutil
 import asyncio
 import tempfile
@@ -14,38 +15,47 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
+# 加载.env文件
+from dotenv import load_dotenv
+load_dotenv()
+
+# 加载配置文件
+config_path = os.getenv("CONFIG_PATH", "config.yaml")
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
+
 # 创建应用
 app = FastAPI(
-    title="olmOCR API",
-    description="用于PDF和图像文档OCR处理的API接口",
-    version="1.0.0",
+    title=config["app"]["title"],
+    description=config["app"]["description"],
+    version=config["app"]["version"],
+    debug=os.getenv("DEBUG", config["app"].get("debug", False))
 )
 
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=os.getenv("ALLOW_ORIGINS", config["cors"]["allow_origins"]),
+    allow_credentials=config["cors"]["allow_credentials"],
+    allow_methods=config["cors"]["allow_methods"],
+    allow_headers=config["cors"]["allow_headers"],
 )
 
 # 安全配置
-SECRET_KEY = "YOUR_SECRET_KEY_HERE"  # 在生产环境中请使用安全的随机密钥
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = config["security"]["algorithm"]
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", config["security"]["access_token_expire_minutes"]))
 
-# 用户数据库 - 在生产环境中应该使用真实的数据库
-fake_users_db = {
-    "admin": {
-        "username": "admin",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",  # 密码: secret
-    }
-}
+# 用户数据库 - 从配置文件加载
+fake_users_db = config["users"]
 
 # 工作目录
-WORK_DIR = Path("./olmocr_workdir")
+WORK_DIR = Path(os.getenv("WORK_DIR", config["workdir"]))
 WORK_DIR.mkdir(exist_ok=True)
+
+# 支持的文件格式
+SUPPORTED_FORMATS = config["ocr"]["supported_formats"]
+MAX_FILE_SIZE_MB = config["ocr"]["max_file_size_mb"]
 
 # 任务状态存储
 TASKS = {}
@@ -212,10 +222,23 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     # 验证文件类型
     filename = file.filename.lower()
-    if not (filename.endswith(".pdf") or filename.endswith(".png") or filename.endswith(".jpg") or filename.endswith(".jpeg")):
+    file_ext = Path(filename).suffix
+    if file_ext not in SUPPORTED_FORMATS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="只支持PDF, PNG, JPG文件格式"
+            detail=f"不支持的文件格式。支持的格式: {', '.join(SUPPORTED_FORMATS)}"
+        )
+    
+    # 检查文件大小
+    file_size_mb = 0
+    file_content = await file.read()
+    file_size_mb = len(file_content) / (1024 * 1024)
+    await file.seek(0)  # 重置文件指针
+    
+    if file_size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件太大。最大允许大小: {MAX_FILE_SIZE_MB}MB"
         )
     
     # 生成任务ID
@@ -224,7 +247,7 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
     # 保存上传的文件
     file_path = WORK_DIR / f"{task_id}_{file.filename}"
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_content)
     
     # 创建任务记录
     TASKS[task_id] = {
@@ -299,6 +322,16 @@ async def get_task_result(task_id: str, current_user: User = Depends(get_current
 async def root():
     return {"message": "欢迎使用olmOCR API服务"}
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app", 
+        host=os.getenv("API_HOST", config["server"]["host"]), 
+        port=int(os.getenv("API_PORT", config["server"]["port"])),
+        workers=int(os.getenv("API_WORKERS", config["server"]["workers"])),
+        reload=os.getenv("API_RELOAD", config["server"]["reload"])
+    )
